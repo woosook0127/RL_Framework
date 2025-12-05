@@ -1,4 +1,6 @@
-"""PPO-BR (PPO with Bidirectional Regularization) Algorithm"""
+"""PPO-BR (PPO with Bidirectional Regularization) Algorithm - Improved Version
+후반 수렴 단계에서 성능을 제대로 뽑을 수 있도록 개선된 버전
+"""
 import os
 import random
 import sys
@@ -20,7 +22,7 @@ from utils import make_env_discrete, make_env_continuous, PPODiscreteAgent, PPOC
 
 
 class PPO_BR:
-    """PPO-BR Algorithm Trainer with Adaptive Trust Region"""
+    """PPO-BR Algorithm Trainer with Adaptive Trust Region - Improved for convergence phase"""
     
     def __init__(
         self,
@@ -157,6 +159,9 @@ class PPO_BR:
         self.convergence_episode = None
         self.max_performance_episode = None
         self.eval_window_size = 100
+        # Improved: Track convergence state for better late-phase performance (only for continuous)
+        self.max_reward_observed = -np.inf  # Track maximum reward for convergence detection
+        self.reward_stability_window = 20  # Window for checking reward stability
         
     def get_config(self):
         """Get configuration dictionary"""
@@ -211,10 +216,43 @@ class PPO_BR:
         
         self.optimizer = optim.Adam(self.agent.parameters(), lr=self.learning_rate, eps=1e-5)
     
+    def _is_converging(self):
+        """Improved: Detect if we're in convergence phase (near max performance)
+        Only used for continuous action spaces - discrete spaces converge more naturally
+        """
+        # Discrete environments: don't use convergence detection
+        # They have clearer entropy patterns and converge more naturally
+        # Using convergence detection in discrete spaces can prematurely limit exploration
+        if self.is_discrete:
+            return False
+        
+        # Continuous environments: use convergence detection
+        if len(self.recent_rewards) < self.reward_stability_window:
+            return False
+        
+        recent_array = np.array(list(self.recent_rewards))
+        recent_mean = np.mean(recent_array)
+        recent_std = np.std(recent_array)
+        
+        # Update max reward observed
+        if recent_mean > self.max_reward_observed:
+            self.max_reward_observed = recent_mean
+        
+        # Convergence criteria:
+        # 1. Recent mean is close to max observed (within 5%)
+        # 2. Low variance (stable performance)
+        # 3. Small or negative Delta_R_t (not improving much)
+        near_max = recent_mean >= self.max_reward_observed * 0.95
+        low_variance = recent_std < recent_mean * 0.1  # Less than 10% relative std
+        
+        return near_max and low_variance
+    
     def _compute_adaptive_clip_coef(self, b_obs):
         """
         Compute adaptive clipping threshold ε_t according to paper formula:
         ε_t = ε_0 * (1 + λ_1 * tanh(φ(H_t)) - λ_2 * tanh(ψ(ΔR_t)))
+        
+        Improved: Better handling of convergence phase for late-stage performance
         
         where:
         - H_t: current policy entropy
@@ -255,12 +293,29 @@ class PPO_BR:
         # When |ΔR_t| is small (plateauing) → ψ is HIGH → contract (convergence)
         # When |ΔR_t| is large (changing) → ψ is LOW → expand/maintain (exploration)
         abs_Delta_R_t = abs(Delta_R_t)
-        # Normalize using tanh: maps to [0,1] where 0 means large change, 1 means no change
-        # Then invert: 1 - tanh(|ΔR_t|) gives HIGH when plateauing, LOW when changing
-        # But we want HIGH when plateauing, so we use: 1 - tanh(|ΔR_t|)
-        # However, tanh(|ΔR_t|) → 1 as |ΔR_t| → ∞, so 1 - tanh(|ΔR_t|) → 0
-        # This means: small |ΔR_t| → ψ ≈ 1 (HIGH, contract), large |ΔR_t| → ψ ≈ 0 (LOW, expand)
-        psi_Delta_R_t = 1.0 - np.tanh(abs_Delta_R_t)  # High when plateauing (convergence), low when changing
+        
+        if self.is_discrete:
+            # Discrete environments: use original simple scaling (exactly same as original version)
+            # Normalize using tanh: maps to [0,1] where 0 means large change, 1 means no change
+            # Then invert: 1 - tanh(|ΔR_t|) gives HIGH when plateauing, LOW when changing
+            psi_Delta_R_t = 1.0 - np.tanh(abs_Delta_R_t)  # High when plateauing (convergence), low when changing
+        else:
+            # Continuous environments: use improved adaptive scaling based on convergence state
+            is_converging = self._is_converging()
+            
+            if is_converging:
+                # Continuous + convergence phase: stronger contraction
+                # Scale factor 1.5 makes psi more sensitive to small changes
+                # This ensures trust region contracts more aggressively when near max performance
+                psi_Delta_R_t = 1.0 - np.tanh(abs_Delta_R_t * 1.5)
+                
+                # Additional convergence boost: if Delta_R_t is very small, force stronger contraction
+                if abs_Delta_R_t < 0.05:  # Very small change
+                    psi_Delta_R_t = min(psi_Delta_R_t + 0.2, 1.0)  # Boost contraction
+            else:
+                # Continuous + exploration phase: gentler response
+                # Scale factor 0.8 prevents premature contraction during learning phase
+                psi_Delta_R_t = 1.0 - np.tanh(abs_Delta_R_t * 0.8)
         
         # Apply paper formula: ε_t = ε_0 * (1 + λ_1 * tanh(φ(H_t)) - λ_2 * tanh(ψ(ΔR_t)))
         # Note: tanh(φ(H_t)) expands trust region when entropy is high (exploration)
@@ -328,7 +383,6 @@ class PPO_BR:
                         if info and "episode" in info:
                             episode_reward = float(info["episode"]["r"])
                             self.writer.add_scalar("charts/episodic_return", episode_reward, global_step)
-                            # self.writer.add_scalar("charts/episodic_return_iteration", episode_reward, iteration)  # Disabled for tuning
                             self.recent_rewards.append(episode_reward)
                             self.all_episode_rewards.append(episode_reward)
                 elif "episode" in infos:
@@ -338,7 +392,6 @@ class PPO_BR:
                             if episode_info["_r"][i]:
                                 episode_reward = float(episode_info["r"][i])
                                 self.writer.add_scalar("charts/episodic_return", episode_reward, global_step)
-                                # self.writer.add_scalar("charts/episodic_return_iteration", episode_reward, iteration)  # Disabled for tuning
                                 self.recent_rewards.append(episode_reward)
                                 self.all_episode_rewards.append(episode_reward)
             
@@ -436,17 +489,6 @@ class PPO_BR:
             self.writer.add_scalar("ppo_br/H_t", H_t, global_step)
             self.writer.add_scalar("ppo_br/Delta_R_t", Delta_R_t, global_step)
             
-            # Disabled logs (uncomment if needed for debugging)
-            # self.writer.add_scalar("charts/learning_rate", self.optimizer.param_groups[0]["lr"], global_step)
-            # self.writer.add_scalar("losses/entropy", entropy_loss.item(), global_step)
-            # self.writer.add_scalar("losses/approx_kl", approx_kl.item(), global_step)
-            # self.writer.add_scalar("losses/clipfrac", np.mean(clipfracs), global_step)
-            # self.writer.add_scalar("ppo_br/epsilon_0", self.epsilon_0, global_step)  # Constant
-            # self.writer.add_scalar("ppo_br/H_max", self.H_max, global_step)  # Constant
-            # self.writer.add_scalar("ppo_br/phi_H_t", phi_H_t, global_step)  # Internal value
-            # self.writer.add_scalar("ppo_br/psi_Delta_R_t", psi_Delta_R_t, global_step)  # Internal value
-            # self.writer.add_scalar("losses/value_loss_iteration", v_loss.item(), iteration)  # Duplicate
-            
             if len(self.all_episode_rewards) >= self.eval_window_size:
                 if self.max_performance_episode is None and len(self.all_episode_rewards) >= 10:
                     max_performance = max(self.all_episode_rewards)
@@ -481,10 +523,6 @@ class PPO_BR:
                 # Essential paper metrics (logged periodically for monitoring)
                 self.writer.add_scalar("paper_metrics/return", return_avg, global_step)
                 self.writer.add_scalar("paper_metrics/reward_variance", reward_variance, global_step)
-                
-                # Disabled (uncomment if needed)
-                # if self.convergence_episode is not None:
-                #     self.writer.add_scalar("paper_metrics/convergence_steps", self.convergence_episode, global_step)
             
             pbar.set_postfix({"eps_t": f"{epsilon_t:.3f}", "H_t": f"{H_t:.2f}", "ΔR_t": f"{Delta_R_t:.3f}"})
         
@@ -510,10 +548,6 @@ class PPO_BR:
             # Final metrics (essential for evaluation)
             self.writer.add_scalar("paper_metrics/final_return", final_return, global_step)
             self.writer.add_scalar("paper_metrics/final_reward_variance", final_variance, global_step)
-            
-            # Disabled (uncomment if needed)
-            # if self.convergence_episode is not None:
-            #     self.writer.add_scalar("paper_metrics/final_convergence_steps", self.convergence_episode, global_step)
             
             print(f"\n{'='*60}")
             print("Final Paper Reproduction Metrics:")
