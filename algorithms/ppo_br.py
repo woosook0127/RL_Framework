@@ -328,7 +328,7 @@ class PPO_BR:
                         if info and "episode" in info:
                             episode_reward = float(info["episode"]["r"])
                             self.writer.add_scalar("charts/episodic_return", episode_reward, global_step)
-                            self.writer.add_scalar("charts/episodic_return_iteration", episode_reward, iteration)
+                            # self.writer.add_scalar("charts/episodic_return_iteration", episode_reward, iteration)  # Disabled for tuning
                             self.recent_rewards.append(episode_reward)
                             self.all_episode_rewards.append(episode_reward)
                 elif "episode" in infos:
@@ -338,7 +338,7 @@ class PPO_BR:
                             if episode_info["_r"][i]:
                                 episode_reward = float(episode_info["r"][i])
                                 self.writer.add_scalar("charts/episodic_return", episode_reward, global_step)
-                                self.writer.add_scalar("charts/episodic_return_iteration", episode_reward, iteration)
+                                # self.writer.add_scalar("charts/episodic_return_iteration", episode_reward, iteration)  # Disabled for tuning
                                 self.recent_rewards.append(episode_reward)
                                 self.all_episode_rewards.append(episode_reward)
             
@@ -428,38 +428,24 @@ class PPO_BR:
                 if self.target_kl is not None and approx_kl > self.target_kl:
                     break
             
-            y_pred, y_true = b_values.cpu().numpy(), b_returns.cpu().numpy()
-            var_y = np.var(y_true)
-            explained_var = np.nan if var_y == 0 else 1 - np.var(y_true - y_pred) / var_y
-            
-            self.writer.add_scalar("charts/learning_rate", self.optimizer.param_groups[0]["lr"], global_step)
-            self.writer.add_scalar("losses/value_loss", v_loss.item(), global_step)
+            # Essential logs for PPO-BR tuning
             self.writer.add_scalar("losses/policy_loss", pg_loss.item(), global_step)
-            self.writer.add_scalar("losses/entropy", entropy_loss.item(), global_step)
-            self.writer.add_scalar("losses/approx_kl", approx_kl.item(), global_step)
-            self.writer.add_scalar("losses/clipfrac", np.mean(clipfracs), global_step)
-            self.writer.add_scalar("losses/explained_variance", explained_var, global_step)
-            # PPO-BR metrics with paper notation
+            self.writer.add_scalar("losses/value_loss", v_loss.item(), global_step)
+            # PPO-BR core metrics
             self.writer.add_scalar("ppo_br/epsilon_t", epsilon_t, global_step)
-            self.writer.add_scalar("ppo_br/epsilon_0", self.epsilon_0, global_step)
             self.writer.add_scalar("ppo_br/H_t", H_t, global_step)
-            self.writer.add_scalar("ppo_br/H_max", self.H_max, global_step)
-            self.writer.add_scalar("ppo_br/phi_H_t", phi_H_t, global_step)
             self.writer.add_scalar("ppo_br/Delta_R_t", Delta_R_t, global_step)
-            self.writer.add_scalar("ppo_br/psi_Delta_R_t", psi_Delta_R_t, global_step)
             
-            with torch.no_grad():
-                _, _, entropy_batch, _ = self.agent.get_action_and_value(b_obs[:min(100, len(b_obs))])
-                avg_entropy = entropy_batch.mean().item()
-                self.writer.add_scalar("ppo_br/entropy_batch_avg", avg_entropy, global_step)
-                if len(self.recent_rewards) >= 5:
-                    reward_array = np.array(self.recent_rewards)
-                    reward_mean = np.mean(reward_array)
-                    reward_std = np.std(reward_array)
-                    self.writer.add_scalar("ppo_br/reward_mean", reward_mean, global_step)
-                    self.writer.add_scalar("ppo_br/reward_std", reward_std, global_step)
-            
-            self.writer.add_scalar("losses/value_loss_iteration", v_loss.item(), iteration)
+            # Disabled logs (uncomment if needed for debugging)
+            # self.writer.add_scalar("charts/learning_rate", self.optimizer.param_groups[0]["lr"], global_step)
+            # self.writer.add_scalar("losses/entropy", entropy_loss.item(), global_step)
+            # self.writer.add_scalar("losses/approx_kl", approx_kl.item(), global_step)
+            # self.writer.add_scalar("losses/clipfrac", np.mean(clipfracs), global_step)
+            # self.writer.add_scalar("ppo_br/epsilon_0", self.epsilon_0, global_step)  # Constant
+            # self.writer.add_scalar("ppo_br/H_max", self.H_max, global_step)  # Constant
+            # self.writer.add_scalar("ppo_br/phi_H_t", phi_H_t, global_step)  # Internal value
+            # self.writer.add_scalar("ppo_br/psi_Delta_R_t", psi_Delta_R_t, global_step)  # Internal value
+            # self.writer.add_scalar("losses/value_loss_iteration", v_loss.item(), iteration)  # Duplicate
             
             if len(self.all_episode_rewards) >= self.eval_window_size:
                 if self.max_performance_episode is None and len(self.all_episode_rewards) >= 10:
@@ -492,11 +478,13 @@ class PPO_BR:
                 return_avg = np.mean(eval_rewards)
                 reward_variance = np.std(eval_rewards, ddof=1)
                 
+                # Essential paper metrics (logged periodically for monitoring)
                 self.writer.add_scalar("paper_metrics/return", return_avg, global_step)
                 self.writer.add_scalar("paper_metrics/reward_variance", reward_variance, global_step)
                 
-                if self.convergence_episode is not None:
-                    self.writer.add_scalar("paper_metrics/convergence_steps", self.convergence_episode, global_step)
+                # Disabled (uncomment if needed)
+                # if self.convergence_episode is not None:
+                #     self.writer.add_scalar("paper_metrics/convergence_steps", self.convergence_episode, global_step)
             
             pbar.set_postfix({"eps_t": f"{epsilon_t:.3f}", "H_t": f"{H_t:.2f}", "ΔR_t": f"{Delta_R_t:.3f}"})
         
@@ -519,11 +507,13 @@ class PPO_BR:
             final_return = np.mean(final_rewards)
             final_variance = np.std(final_rewards, ddof=1)
             
+            # Final metrics (essential for evaluation)
             self.writer.add_scalar("paper_metrics/final_return", final_return, global_step)
             self.writer.add_scalar("paper_metrics/final_reward_variance", final_variance, global_step)
             
-            if self.convergence_episode is not None:
-                self.writer.add_scalar("paper_metrics/final_convergence_steps", self.convergence_episode, global_step)
+            # Disabled (uncomment if needed)
+            # if self.convergence_episode is not None:
+            #     self.writer.add_scalar("paper_metrics/final_convergence_steps", self.convergence_episode, global_step)
             
             print(f"\n{'='*60}")
             print("Final Paper Reproduction Metrics:")
