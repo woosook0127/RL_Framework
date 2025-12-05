@@ -6,7 +6,7 @@ import os
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from algorithms import PPO, PPO_BR
+from algorithms import PPO, PPO_BR, Simple_PPO_BR
 
 
 DEFAULT_COMMON = {
@@ -40,26 +40,43 @@ PPO_BR_DEFAULT = {
     'reward_window_size': 10,
 }
 
+SIMPLE_PPO_BR_DEFAULT = {
+    **DEFAULT_COMMON,
+    'learning_rate': 3e-4,
+    'epsilon_0': 0.2,  # Base clipping threshold ε_0 (paper notation)
+    'lambda_1': 0.5,  # Scaling hyperparameter for entropy expansion λ_1 (paper notation)
+    'lambda_2': 0.3,  # Scaling hyperparameter for reward contraction λ_2 (paper notation)
+    'reward_window_size': 20,  # Match ppo_br default (was 10)
+    'psi_method': 'smooth',  # Best: 'smooth' (exponential + smooth is best combination)
+    'delta_r_method': 'exponential',  # Best: 'exponential' (exponential + smooth is best combination)
+}
+
 ENV_CONFIGS = {
     'CartPole': {
         'total_timesteps': 500000,
         'num_envs': 4,
         'num_steps': 128,
         'ent_coef': 0.01,
+        'convergence_threshold_ratio': 0.99,
+        'reward_window_size': 10,  # 빠른 수렴, 짧은 에피소드 → 작은 k
     },
-    'LunarLander': {
+    'LunarLander': {  # Best version
         'total_timesteps': 1000000,
         'num_envs': 4,
         'num_steps': 128,
-        'ent_coef': 0.01,
-        'lambda_1': 0.7,
+        'epsilon_0': 0.3,
+        'ent_coef': 0.02,  # 0.01 -> 0.02: Increase entropy bonus for exploration
+        'lambda_1': 0.8,  # 0.5 -> 0.8: Strong expansion for better exploration
+        'lambda_2': 0.2,
+        'reward_window_size': 15,  # 20 -> 15: Smaller window for faster adaptation
+        'convergence_threshold_ratio': 0.5,
     },
     'Hopper': {
         'total_timesteps': 3000000,
         'num_envs': 1,
         'num_steps': 2048,
         'ent_coef': 0.0,
-        'reward_window_size': 20,
+        'reward_window_size': 30,  # 느린 수렴, 높은 변동성 → 큰 k
         'lambda_1': 0.3,
         'lambda_2': 0.2,
     },
@@ -68,22 +85,25 @@ ENV_CONFIGS = {
         'num_envs': 1,
         'num_steps': 2048,
         'ent_coef': 0.0,
+        'reward_window_size': 30,  # 느린 수렴, 높은 변동성 → 큰 k
     },
     'Walker2d': {
         'total_timesteps': 3000000,
         'num_envs': 1,
         'num_steps': 2048,
         'ent_coef': 0.0,
+        'reward_window_size': 30,  # 느린 수렴, 높은 변동성 → 큰 k
     },
     'Humanoid': {
         'total_timesteps': 10000000,
         'num_envs': 1,
         'num_steps': 2048,
         'ent_coef': 0.0,
+        'reward_window_size': 40,  # 매우 느린 수렴, 매우 높은 변동성 → 매우 큰 k
     },
 }
 
-ALL_ENVS = ['CartPole-v0', 'LunarLander-v3', 'Hopper-v4', 'HalfCheetah-v4', 'Walker2d-v4', 'Humanoid-v4']
+ALL_ENVS = ['CartPole-v0', 'LunarLander-v3', 'Hopper-v5', 'HalfCheetah-v5', 'Walker2d-v5', 'Humanoid-v5']
 
 
 def _get_env_name(env_id):
@@ -99,6 +119,8 @@ def run_experiment(env_id, algorithm='ppo_br', **kwargs):
         default_config = PPO_DEFAULT.copy()
     elif algorithm.lower() == 'ppo_br':
         default_config = PPO_BR_DEFAULT.copy()
+    elif algorithm.lower() == 'simple_ppo_br':
+        default_config = SIMPLE_PPO_BR_DEFAULT.copy()
     else:
         raise ValueError(f"Unknown algorithm: {algorithm}")
     
@@ -132,6 +154,24 @@ def run_experiment(env_id, algorithm='ppo_br', **kwargs):
         if 'lambda2' in ppo_br_config and 'lambda_2' not in ppo_br_config:
             ppo_br_config['lambda_2'] = ppo_br_config.pop('lambda2')
         trainer = PPO_BR(**ppo_br_config)
+    elif algorithm.lower() == 'simple_ppo_br':
+        simple_ppo_br_config = config.copy()
+        # Handle backward compatibility: convert old names to new paper notation
+        if 'clip_coef' in simple_ppo_br_config:
+            if 'epsilon_0' not in simple_ppo_br_config and 'base_clip_coef' not in simple_ppo_br_config:
+                simple_ppo_br_config['epsilon_0'] = simple_ppo_br_config.pop('clip_coef')
+            else:
+                simple_ppo_br_config.pop('clip_coef')
+        if 'base_clip_coef' in simple_ppo_br_config and 'epsilon_0' not in simple_ppo_br_config:
+            simple_ppo_br_config['epsilon_0'] = simple_ppo_br_config.pop('base_clip_coef')
+        if 'lambda1' in simple_ppo_br_config and 'lambda_1' not in simple_ppo_br_config:
+            simple_ppo_br_config['lambda_1'] = simple_ppo_br_config.pop('lambda1')
+        if 'lambda2' in simple_ppo_br_config and 'lambda_2' not in simple_ppo_br_config:
+            simple_ppo_br_config['lambda_2'] = simple_ppo_br_config.pop('lambda2')
+        # Remove PPO_BR specific params that Simple_PPO_BR doesn't use
+        simple_ppo_br_config.pop('value_clip_coef', None)
+        # Keep convergence_threshold_ratio (Simple_PPO_BR now supports it)
+        trainer = Simple_PPO_BR(**simple_ppo_br_config)
     
     agent = trainer.train()
     
@@ -174,6 +214,9 @@ Examples:
   # PPO-BR on CartPole
   python main.py --algorithm ppo_br --env CartPole-v1 --seed 42
 
+  # Simple PPO-BR on LunarLander (minimal implementation)
+  python main.py --algorithm simple_ppo_br --env LunarLander-v3 --seed 42
+
   # PPO on HalfCheetah
   python main.py --algorithm ppo --env HalfCheetah-v4 --seed 42
 
@@ -189,8 +232,8 @@ Examples:
         '--algorithm',
         type=str,
         default='ppo_br',
-        choices=['ppo', 'ppo_br'],
-        help='Algorithm to use (default: ppo_br)'
+        choices=['ppo', 'ppo_br', 'simple_ppo_br'],
+        help='Algorithm to use (default: ppo_br). simple_ppo_br is a minimal implementation for testing.'
     )
     
     parser.add_argument(
@@ -248,6 +291,8 @@ Examples:
     parser.add_argument('--lambda1', type=float, default=None, help='[Deprecated] Use --lambda-1 instead. PPO-BR lambda1 (entropy expansion, default: 0.5)')
     parser.add_argument('--lambda2', type=float, default=None, help='[Deprecated] Use --lambda-2 instead. PPO-BR lambda2 (reward contraction, default: 0.3)')
     parser.add_argument('--reward-window-size', type=int, default=None, help='Reward window size for PPO-BR (default: 10)')
+    parser.add_argument('--psi-method', type=str, default=None, choices=['tanh', 'inverse', 'exp', 'tanh_scaled', 'smooth', 'adaptive'], help='Method for ψ(ΔR_t) in Simple PPO-BR: tanh (ppo_br), inverse, exp, tanh_scaled, smooth, adaptive (default: tanh)')
+    parser.add_argument('--delta-r-method', type=str, default=None, choices=['half_mean', 'linear', 'exponential', 'recent_vs_old', 'simple_mean'], help='Method for ΔR_t in Simple PPO-BR: half_mean (ppo_br), linear (옵션1), exponential, recent_vs_old, simple_mean (옵션2) (default: exponential)')
     
     # Other options
     parser.add_argument('--cuda', type=lambda x: x.lower() in ['true', '1', 'yes'], default=None, metavar='BOOL', help='Use CUDA (default: True)')
@@ -309,13 +354,13 @@ Examples:
     if args.algorithm == 'ppo':
         if args.clip_coef is not None:
             kwargs['clip_coef'] = args.clip_coef
-    elif args.algorithm == 'ppo_br':
+    elif args.algorithm in ['ppo_br', 'simple_ppo_br']:
         # Use paper notation (epsilon_0, lambda_1, lambda_2)
         if args.epsilon_0 is not None:
             kwargs['epsilon_0'] = args.epsilon_0
         elif args.base_clip_coef is not None:
             kwargs['epsilon_0'] = args.base_clip_coef  # Backward compatibility
-        if args.value_clip_coef is not None:
+        if args.algorithm == 'ppo_br' and args.value_clip_coef is not None:
             kwargs['value_clip_coef'] = args.value_clip_coef
         if args.lambda_1 is not None:
             kwargs['lambda_1'] = args.lambda_1
@@ -327,6 +372,11 @@ Examples:
             kwargs['lambda_2'] = args.lambda2  # Backward compatibility
         if args.reward_window_size is not None:
             kwargs['reward_window_size'] = args.reward_window_size
+        if args.algorithm == 'simple_ppo_br':
+            if args.psi_method is not None:
+                kwargs['psi_method'] = args.psi_method
+            if args.delta_r_method is not None:
+                kwargs['delta_r_method'] = args.delta_r_method
     
     if args.num_seeds > 1:
         print(f"\n{'='*60}")
