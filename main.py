@@ -67,32 +67,55 @@ ENV_CONFIGS = {
         'epsilon_0': 0.3,
         'ent_coef': 0.02,  # 0.01 -> 0.02: Increase entropy bonus for exploration
         'lambda_1': 0.8,  # 0.5 -> 0.8: Strong expansion for better exploration
-        'lambda_2': 0.2,
+        'lambda_2': 0.3,
         'reward_window_size': 15,  # 20 -> 15: Smaller window for faster adaptation
         'convergence_threshold_ratio': 0.5,
     },
-    'Hopper': {
+    'Hopper': { # Best version. PPO 와 비슷슷
         'total_timesteps': 3000000,
         'num_envs': 1,
         'num_steps': 2048,
-        'ent_coef': 0.0,
-        'reward_window_size': 30,  # 느린 수렴, 높은 변동성 → 큰 k
-        'lambda_1': 0.3,
-        'lambda_2': 0.2,
+        'epsilon_0': 0.23,  # Gray(0.25)와 현재(0.2)의 균형: 안정성 + 높은 성능
+        'ent_coef': 0.0005,  # 매우 작은 entropy bonus: 초반 exploration만 도움
+        'reward_window_size': 22,  # Gray(30)와 현재(20)의 중간: 빠른 적응 + 안정성
+        'lambda_1': 0.65,  # Gray(0.7)와 현재(0.5)의 중간: 강한 exploration으로 높은 최종 성능
+        'lambda_2': 0.2,  # Gray와 동일: Expansion 여유 확보
     },
+    # 'Hopper': { # Best version. PPO 와 비슷슷
+    #     'total_timesteps': 3000000,
+    #     'num_envs': 1,
+    #     'num_steps': 2048,
+    #     'epsilon_0': 0.23,  # Gray(0.25)와 현재(0.2)의 균형: 안정성 + 높은 성능
+    #     'ent_coef': 0.0005,  # 매우 작은 entropy bonus: 초반 exploration만 도움
+    #     'reward_window_size': 22,  # Gray(30)와 현재(20)의 중간: 빠른 적응 + 안정성
+    #     'lambda_1': 0.65,  # Gray(0.7)와 현재(0.5)의 중간: 강한 exploration으로 높은 최종 성능
+    #     'lambda_2': 0.2,  # Gray와 동일: Expansion 여유 확보
+    # },
     'HalfCheetah': {
         'total_timesteps': 3000000,
         'num_envs': 1,
         'num_steps': 2048,
         'ent_coef': 0.0,
-        'reward_window_size': 30,  # 느린 수렴, 높은 변동성 → 큰 k
+        # Critical fix: Initial return too low → early convergence to poor performance
+        # Strategy: (1) Better early exploration, (2) Prevent premature convergence, (3) Enable long-term learning
+        'update_epochs': 4,  # Standard epochs
+        'vf_coef': 0.5,  # Standard value function coefficient
+        'max_grad_norm': 0.5,  # Standard gradient clipping
     },
     'Walker2d': {
         'total_timesteps': 3000000,
         'num_envs': 1,
         'num_steps': 2048,
         'ent_coef': 0.0,
-        'reward_window_size': 30,  # 느린 수렴, 높은 변동성 → 큰 k
+        # PPO-BR paper principles: dual-signal adaptation
+        # (1) Entropy-driven expansion: promotes exploration in high-uncertainty states
+        # (2) Reward-guided contraction: enforces stability during convergence
+        'learning_rate': 3e-4,  # Standard learning rate
+        'epsilon_0': 0.2,  # Base clipping threshold (paper default)
+        'lambda_1': 0.65,  # Enhanced entropy expansion for faster early exploration
+        'lambda_2': 0.28,  # Strong reward contraction for stable convergence (paper emphasizes this)
+        'reward_window_size': 25,  # Optimal window for tracking reward progression (ΔR_t)
+        'update_epochs': 4,  # Standard epochs
     },
     'Humanoid': {
         'total_timesteps': 10000000,
@@ -103,7 +126,7 @@ ENV_CONFIGS = {
     },
 }
 
-ALL_ENVS = ['CartPole-v0', 'LunarLander-v3', 'Hopper-v5', 'HalfCheetah-v5', 'Walker2d-v5', 'Humanoid-v5']
+ALL_ENVS = ['CartPole-v0', 'LunarLander-v3', 'Hopper-v4', 'HalfCheetah-v5', 'Walker2d-v5', 'Humanoid-v5']
 
 
 def _get_env_name(env_id):
