@@ -41,6 +41,7 @@ class PPO:
         vf_coef: float = 0.5,
         max_grad_norm: float = 0.5,
         target_kl: Optional[float] = None,
+        convergence_threshold_ratio: float = 0.99,
         cuda: bool = True,
         torch_deterministic: bool = True,
         capture_video: bool = False,
@@ -67,6 +68,7 @@ class PPO:
         self.vf_coef = vf_coef
         self.max_grad_norm = max_grad_norm
         self.target_kl = target_kl
+        self.convergence_threshold_ratio = convergence_threshold_ratio
         self.cuda = cuda
         self.torch_deterministic = torch_deterministic
         self.capture_video = capture_video
@@ -113,8 +115,9 @@ class PPO:
         torch.backends.cudnn.deterministic = self.torch_deterministic
         
         # GPU optimization settings (CleanRL style)
+        # Note: benchmark=True conflicts with deterministic=True, so only enable when not deterministic
         if torch.cuda.is_available() and self.cuda:
-            torch.backends.cudnn.benchmark = True
+            torch.backends.cudnn.benchmark = not self.torch_deterministic
             torch.backends.cuda.matmul.allow_tf32 = True
             torch.backends.cudnn.allow_tf32 = True
         
@@ -340,20 +343,21 @@ class PPO:
                 if self.max_performance_episode is None and len(self.all_episode_rewards) >= 10:
                     max_performance = max(self.all_episode_rewards)
                     for i, reward in enumerate(self.all_episode_rewards):
-                        if reward >= max_performance * 0.99:
+                        if reward >= max_performance * self.convergence_threshold_ratio:
                             self.max_performance_episode = i
                             break
                 
                 if self.convergence_episode is None and len(self.all_episode_rewards) >= 50:
                     max_performance = max(self.all_episode_rewards)
-                    convergence_threshold = max_performance * 0.99
+                    convergence_threshold = max_performance * self.convergence_threshold_ratio
                     window_size = 10
                     for i in range(len(self.all_episode_rewards) - window_size + 1):
                         window_rewards = self.all_episode_rewards[i:i+window_size]
                         window_avg = np.mean(window_rewards)
                         if window_avg >= convergence_threshold:
                             self.convergence_episode = i
-                            print(f"\n[Convergence] Episode {i}: Moving avg {window_avg:.2f} >= Threshold {convergence_threshold:.2f} (99% of Max: {max_performance:.2f})")
+                            threshold_pct = int(self.convergence_threshold_ratio * 100)
+                            print(f"\n[Convergence] Episode {i}: Moving avg {window_avg:.2f} >= Threshold {convergence_threshold:.2f} ({threshold_pct}% of Max: {max_performance:.2f})")
                             break
                 
                 if self.max_performance_episode is not None and self.max_performance_episode < len(self.all_episode_rewards):
@@ -406,9 +410,10 @@ class PPO:
             print(f"Reward Variance: {final_variance:.2f}")
             if self.convergence_episode is not None:
                 max_performance = max(self.all_episode_rewards)
-                convergence_threshold = max_performance * 0.99
+                convergence_threshold = max_performance * self.convergence_threshold_ratio
+                threshold_pct = int(self.convergence_threshold_ratio * 100)
                 print(f"Convergence Steps (Episodes): {self.convergence_episode}")
-                print(f"Convergence Threshold: {convergence_threshold:.2f} (99% of max: {max_performance:.2f})")
+                print(f"Convergence Threshold: {convergence_threshold:.2f} ({threshold_pct}% of max: {max_performance:.2f})")
             else:
                 print(f"Convergence Steps: Not converged")
             print(f"Evaluation Window: {eval_note}")
