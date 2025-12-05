@@ -2,6 +2,44 @@
 
 CleanRL 기반의 모듈화된 PPO와 PPO-BR 알고리즘 구현
 
+## 설치 및 환경 설정
+
+### 1. Python 환경 생성 (권장)
+
+```bash
+# Conda를 사용하는 경우
+conda create -n rl_ppo python=3.10
+conda activate rl_ppo
+
+# 또는 venv를 사용하는 경우
+python -m venv rl_ppo
+source rl_ppo/bin/activate  # Linux/Mac
+# 또는
+rl_ppo\Scripts\activate  # Windows
+```
+
+### 2. 의존성 설치
+
+```bash
+# 프로젝트 디렉토리로 이동
+cd RL_Framework
+
+# requirements.txt를 사용하여 설치
+pip install -r requirements.txt
+```
+
+### 빠른 시작
+
+환경 설정이 완료되면 다음 명령으로 테스트할 수 있습니다:
+
+```bash
+# 간단한 테스트 (CartPole, 빠른 수렴)
+python main.py --algorithm ppo_br --env CartPole-v0 --seed 42
+
+# MuJoCo 환경 테스트 (Hopper)
+python main.py --algorithm ppo_br --env Hopper-v5 --seed 42
+```
+
 ## 구조
 
 ```
@@ -22,17 +60,23 @@ RL_Framework/
 # PPO-BR on CartPole
 python main.py --algorithm ppo_br --env CartPole-v0 --seed 42
 
-# PPO on HalfCheetah
-python main.py --algorithm ppo --env HalfCheetah-v4 --seed 42
+# PPO on HalfCheetah-v5
+python main.py --algorithm ppo --env HalfCheetah-v5 --seed 42
+
+# Simple PPO-BR on LunarLander (베스트 조합: exponential + smooth)
+python main.py --algorithm simple_ppo_br --env LunarLander-v3 --seed 42
 
 # 모든 환경에서 실행
 python main.py --algorithm ppo_br --env all
+
+# 여러 시드로 실험
+python main.py --algorithm ppo_br --env Hopper-v5 --num-seeds 5 --start-seed 1
 ```
 
 ## 지원 환경
 
 - **Discrete**: CartPole-v0, LunarLander-v3
-- **Continuous**: Hopper-v4, HalfCheetah-v4, Walker2d-v4, Humanoid-v4
+- **Continuous**: Hopper-v5, HalfCheetah-v5, Walker2d-v5, Humanoid-v5
 
 ## 환경별 설정
 
@@ -59,6 +103,28 @@ python main.py --algorithm ppo_br --env all
 - `reward_window_size`: 10 (Hopper: 20)
 - `min_clip_coef`: 0.1 (Hopper: 0.15)
 - `max_clip_coef`: 0.4 (Hopper: 0.3)
+
+## 문제 해결
+
+### MuJoCo 설치 문제
+
+MuJoCo 설치에 문제가 있는 경우:
+
+```bash
+# MuJoCo 재설치
+pip install --upgrade mujoco gymnasium[mujoco]
+
+# 또는 시스템 패키지로 설치 (Linux)
+# sudo apt-get install libosmesa6-dev libgl1-mesa-glx libglfw3
+```
+
+### CUDA 관련 문제
+
+GPU를 사용하는 경우 PyTorch CUDA 버전 확인:
+
+```bash
+python -c "import torch; print('CUDA available:', torch.cuda.is_available()); print('CUDA version:', torch.version.cuda if torch.cuda.is_available() else 'N/A')"
+```
 
 ## 참고
 
