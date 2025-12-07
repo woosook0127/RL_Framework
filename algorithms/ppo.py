@@ -115,7 +115,6 @@ class PPO:
         torch.backends.cudnn.deterministic = self.torch_deterministic
         
         # GPU optimization settings (CleanRL style)
-        # Note: benchmark=True conflicts with deterministic=True, so only enable when not deterministic
         if torch.cuda.is_available() and self.cuda:
             torch.backends.cudnn.benchmark = not self.torch_deterministic
             torch.backends.cuda.matmul.allow_tf32 = True
