@@ -89,7 +89,6 @@ class PPO_BR:
         self.reward_window_size = reward_window_size
         self.convergence_threshold_ratio = convergence_threshold_ratio
         # Bounds from Lemma 1: ε_t ∈ [ε_0(1-λ_2), ε_0(1+λ_1)]
-        # For backward compatibility, allow manual override
         if min_clip_coef is not None and max_clip_coef is not None:
             self.eps_min = min_clip_coef
             self.eps_max = max_clip_coef
@@ -221,8 +220,6 @@ class PPO_BR:
         Only used for continuous action spaces - discrete spaces converge more naturally
         """
         # Discrete environments: don't use convergence detection
-        # They have clearer entropy patterns and converge more naturally
-        # Using convergence detection in discrete spaces can prematurely limit exploration
         if self.is_discrete:
             return False
         
@@ -237,11 +234,7 @@ class PPO_BR:
         # Update max reward observed
         if recent_mean > self.max_reward_observed:
             self.max_reward_observed = recent_mean
-        
-        # Convergence criteria:
-        # 1. Recent mean is close to max observed (within 5%)
-        # 2. Low variance (stable performance)
-        # 3. Small or negative Delta_R_t (not improving much)
+
         near_max = recent_mean >= self.max_reward_observed * 0.95
         low_variance = recent_std < recent_mean * 0.1  # Less than 10% relative std
         
@@ -249,12 +242,9 @@ class PPO_BR:
     
     def _compute_adaptive_clip_coef(self, b_obs):
         """
-        Compute adaptive clipping threshold ε_t according to paper formula:
+        Compute adaptive clipping threshold ε_t
         ε_t = ε_0 * (1 + λ_1 * tanh(φ(H_t)) - λ_2 * tanh(ψ(ΔR_t)))
-        
-        Improved: Better handling of convergence phase for late-stage performance
-        
-        where:
+
         - H_t: current policy entropy
         - ΔR_t: reward progression
         - φ, ψ: normalization functions mapping to [0,1]
@@ -264,11 +254,9 @@ class PPO_BR:
             H_t = entropy_batch.mean().item()  # Current entropy (paper notation)
         
         # Normalization function φ: maps H_t to [0,1]
-        # φ(H_t) = H_t / H_max (clipped to [0,1])
         phi_H_t = np.clip(H_t / (self.H_max + 1e-8), 0.0, 1.0)
         
         # Compute reward progression ΔR_t
-        # ΔR_t represents the change in reward over recent episodes
         Delta_R_t = 0.0
         if len(self.recent_rewards) >= 10:
             reward_array = np.array(self.recent_rewards)
@@ -284,20 +272,10 @@ class PPO_BR:
                 Delta_R_t = 0.0
         
         # Normalization function ψ: maps ΔR_t to [0,1]
-        # According to paper: "reward-guided contraction (ε ↓) enforces stability during convergence"
-        # Convergence occurs when reward improvement plateaus (ΔR_t ≈ 0)
-        # We want ψ(ΔR_t) to be HIGH when converging (plateauing) to contract trust region
-        # We want ψ(ΔR_t) to be LOW when reward is changing significantly (exploring/degrading) to expand/maintain
-        # 
-        # Strategy: Use absolute value of ΔR_t, normalize, then invert
-        # When |ΔR_t| is small (plateauing) → ψ is HIGH → contract (convergence)
-        # When |ΔR_t| is large (changing) → ψ is LOW → expand/maintain (exploration)
         abs_Delta_R_t = abs(Delta_R_t)
         
         if self.is_discrete:
             # Discrete environments: use original simple scaling (exactly same as original version)
-            # Normalize using tanh: maps to [0,1] where 0 means large change, 1 means no change
-            # Then invert: 1 - tanh(|ΔR_t|) gives HIGH when plateauing, LOW when changing
             psi_Delta_R_t = 1.0 - np.tanh(abs_Delta_R_t)  # High when plateauing (convergence), low when changing
         else:
             # Continuous environments: use improved adaptive scaling based on convergence state
@@ -305,21 +283,16 @@ class PPO_BR:
             
             if is_converging:
                 # Continuous + convergence phase: stronger contraction
-                # Scale factor 1.5 makes psi more sensitive to small changes
-                # This ensures trust region contracts more aggressively when near max performance
                 psi_Delta_R_t = 1.0 - np.tanh(abs_Delta_R_t * 1.5)
                 
                 # Additional convergence boost: if Delta_R_t is very small, force stronger contraction
-                if abs_Delta_R_t < 0.05:  # Very small change
-                    psi_Delta_R_t = min(psi_Delta_R_t + 0.2, 1.0)  # Boost contraction
+                if abs_Delta_R_t < 0.05:
+                    psi_Delta_R_t = min(psi_Delta_R_t + 0.2, 1.0) 
             else:
                 # Continuous + exploration phase: gentler response
-                # Scale factor 0.8 prevents premature contraction during learning phase
                 psi_Delta_R_t = 1.0 - np.tanh(abs_Delta_R_t * 0.8)
         
         # Apply paper formula: ε_t = ε_0 * (1 + λ_1 * tanh(φ(H_t)) - λ_2 * tanh(ψ(ΔR_t)))
-        # Note: tanh(φ(H_t)) expands trust region when entropy is high (exploration)
-        #       tanh(ψ(ΔR_t)) contracts trust region when reward plateaus (convergence)
         epsilon_t = self.epsilon_0 * (
             1.0 + 
             self.lambda_1 * np.tanh(phi_H_t) - 
