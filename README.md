@@ -34,10 +34,10 @@ pip install -r requirements.txt
 
 ```bash
 # 간단한 테스트 (CartPole, 빠른 수렴)
-python main.py --algorithm ppo_br --env CartPole-v0 --seed 42
+python main.py --algorithm ppo_br --env CartPole-v0
 
 # MuJoCo 환경 테스트 (Hopper)
-python main.py --algorithm ppo_br --env Hopper-v5 --seed 42
+python main.py --algorithm ppo_br --env Hopper-v5
 ```
 
 ## 구조
@@ -58,36 +58,36 @@ RL_Framework/
 
 ```bash
 # PPO-BR on CartPole
-python main.py --algorithm ppo_br --env CartPole-v0 --seed 42
+python main.py --algorithm ppo_br --env CartPole-v0
 
-# PPO on HalfCheetah-v5
-python main.py --algorithm ppo --env HalfCheetah-v5 --seed 42
+# PPO on HalfCheetah
+python main.py --algorithm ppo --env HalfCheetah-v5
 
-# Simple PPO-BR on LunarLander (베스트 조합: exponential + smooth)
-python main.py --algorithm simple_ppo_br --env LunarLander-v3 --seed 42
+# Simple PPO-BR on LunarLander
+python main.py --algorithm simple_ppo_br --env LunarLander-v3
 
-# 모든 환경에서 실행
+# 모든 환경 실행
 python main.py --algorithm ppo_br --env all
 
 # 여러 시드로 실험
 python main.py --algorithm ppo_br --env Hopper-v5 --num-seeds 5 --start-seed 1
 ```
 
-## 지원 환경
+## 실험 환경
 
 - **Discrete**: CartPole-v0, LunarLander-v3
-- **Continuous**: Hopper-v5, HalfCheetah-v5, Walker2d-v5, Humanoid-v5
+- **Continuous**: Hopper-v4, HalfCheetah-v5, Walker2d-v5, Humanoid-v5
 
 ## 환경별 설정
 
 | 환경 | Timesteps | Envs | Steps | Ent Coef | Lambda1 | Lambda2 | Window |
 |------|-----------|------|-------|----------|---------|---------|--------|
 | CartPole | 500K | 4 | 128 | 0.01 | 0.5 | 0.3 | 10 |
-| LunarLander | 1M | 4 | 128 | 0.01 | 0.7 | 0.3 | 10 |
-| Hopper | 3M | 1 | 2048 | 0.0 | 0.3 | 0.2 | 20 |
-| HalfCheetah | 3M | 1 | 2048 | 0.0 | 0.5 | 0.3 | 10 |
-| Walker2d | 3M | 1 | 2048 | 0.0 | 0.5 | 0.3 | 10 |
-| Humanoid | 10M | 1 | 2048 | 0.0 | 0.5 | 0.3 | 10 |
+| LunarLander | 1M | 4 | 128 | 0.02 | 0.8 | 0.3 | 15 |
+| Hopper | 3M | 1 | 2048 | 5e-4 | 0.65 | 0.2 | 22 |
+| HalfCheetah | 3M | 1 | 2048 | 5e-4 | 0.7 | 0.2 | 20 |
+| Walker2d | 3M | 1 | 2048 | 0.0 | 0.65 | 0.28 | 25 |
+| Humanoid | 10M | 1 | 2048 | 0.0 | 0.6 | 0.3 | 40 |
 
 ## 하이퍼파라미터
 
@@ -98,11 +98,11 @@ python main.py --algorithm ppo_br --env Hopper-v5 --num-seeds 5 --start-seed 1
 - `base_clip_coef`: 0.2
 
 ### PPO-BR 전용
-- `lambda1`: 0.5 (LunarLander: 0.7, Hopper: 0.3)
-- `lambda2`: 0.3 (Hopper: 0.2)
-- `reward_window_size`: 10 (Hopper: 20)
-- `min_clip_coef`: 0.1 (Hopper: 0.15)
-- `max_clip_coef`: 0.4 (Hopper: 0.3)
+- `lambda1`: 0.5
+- `lambda2`: 0.3
+- `reward_window_size`: 10
+- `min_clip_coef`: 0.1
+- `max_clip_coef`: 0.4
 
 ## 문제 해결
 
@@ -116,14 +116,6 @@ pip install --upgrade mujoco gymnasium[mujoco]
 
 # 또는 시스템 패키지로 설치 (Linux)
 # sudo apt-get install libosmesa6-dev libgl1-mesa-glx libglfw3
-```
-
-### CUDA 관련 문제
-
-GPU를 사용하는 경우 PyTorch CUDA 버전 확인:
-
-```bash
-python -c "import torch; print('CUDA available:', torch.cuda.is_available()); print('CUDA version:', torch.version.cuda if torch.cuda.is_available() else 'N/A')"
 ```
 
 ## 참고
