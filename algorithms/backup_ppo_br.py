@@ -213,10 +213,9 @@ class PPO_BR:
     
     def _compute_adaptive_clip_coef(self, b_obs):
         """
-        Compute adaptive clipping threshold ε_t according to paper formula:
+        Compute adaptive clipping threshold ε_t
         ε_t = ε_0 * (1 + λ_1 * tanh(φ(H_t)) - λ_2 * tanh(ψ(ΔR_t)))
         
-        where:
         - H_t: current policy entropy
         - ΔR_t: reward progression
         - φ, ψ: normalization functions mapping to [0,1]
@@ -230,7 +229,6 @@ class PPO_BR:
         phi_H_t = np.clip(H_t / (self.H_max + 1e-8), 0.0, 1.0)
         
         # Compute reward progression ΔR_t
-        # ΔR_t represents the change in reward over recent episodes
         Delta_R_t = 0.0
         if len(self.recent_rewards) >= 10:
             reward_array = np.array(self.recent_rewards)
@@ -246,32 +244,19 @@ class PPO_BR:
                 Delta_R_t = 0.0
         
         # Normalization function ψ: maps ΔR_t to [0,1]
-        # According to paper: "reward-guided contraction (ε ↓) enforces stability during convergence"
-        # Convergence occurs when reward improvement plateaus (ΔR_t ≈ 0)
-        # We want ψ(ΔR_t) to be HIGH when converging (plateauing) to contract trust region
-        # We want ψ(ΔR_t) to be LOW when reward is changing significantly (exploring/degrading) to expand/maintain
-        # 
-        # Strategy: Use absolute value of ΔR_t, normalize, then invert
-        # When |ΔR_t| is small (plateauing) → ψ is HIGH → contract (convergence)
-        # When |ΔR_t| is large (changing) → ψ is LOW → expand/maintain (exploration)
         abs_Delta_R_t = abs(Delta_R_t)
+        
         # Normalize using tanh: maps to [0,1] where 0 means large change, 1 means no change
-        # Then invert: 1 - tanh(|ΔR_t|) gives HIGH when plateauing, LOW when changing
-        # But we want HIGH when plateauing, so we use: 1 - tanh(|ΔR_t|)
-        # However, tanh(|ΔR_t|) → 1 as |ΔR_t| → ∞, so 1 - tanh(|ΔR_t|) → 0
-        # This means: small |ΔR_t| → ψ ≈ 1 (HIGH, contract), large |ΔR_t| → ψ ≈ 0 (LOW, expand)
         psi_Delta_R_t = 1.0 - np.tanh(abs_Delta_R_t)  # High when plateauing (convergence), low when changing
         
-        # Apply paper formula: ε_t = ε_0 * (1 + λ_1 * tanh(φ(H_t)) - λ_2 * tanh(ψ(ΔR_t)))
-        # Note: tanh(φ(H_t)) expands trust region when entropy is high (exploration)
-        #       tanh(ψ(ΔR_t)) contracts trust region when reward plateaus (convergence)
+        # Calculate ε_t
         epsilon_t = self.epsilon_0 * (
             1.0 + 
             self.lambda_1 * np.tanh(phi_H_t) - 
             self.lambda_2 * np.tanh(psi_Delta_R_t)
         )
         
-        # Enforce bounds from Lemma 1: ε_t ∈ [ε_0(1-λ_2), ε_0(1+λ_1)]
+        # Enforce bounds from Lemma 1
         epsilon_t = np.clip(epsilon_t, self.eps_min, self.eps_max)
         
         return epsilon_t, phi_H_t, psi_Delta_R_t, H_t, Delta_R_t
