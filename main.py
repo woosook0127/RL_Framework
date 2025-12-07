@@ -71,7 +71,7 @@ ENV_CONFIGS = {
         'reward_window_size': 15,  # 20 -> 15: Smaller window for faster adaptation
         'convergence_threshold_ratio': 0.5,
     },
-    'Hopper': { # Best version. PPO 와 비슷슷
+    'Hopper': {
         'total_timesteps': 3000000,
         'num_envs': 1,
         'num_steps': 2048,
@@ -81,52 +81,36 @@ ENV_CONFIGS = {
         'lambda_1': 0.65,  # Gray(0.7)와 현재(0.5)의 중간: 강한 exploration으로 높은 최종 성능
         'lambda_2': 0.2,  # Gray와 동일: Expansion 여유 확보
     },
-    # 'Hopper': { # Best version. PPO 와 비슷슷
-    #     'total_timesteps': 3000000,
-    #     'num_envs': 1,
-    #     'num_steps': 2048,
-    #     'epsilon_0': 0.23,  # Gray(0.25)와 현재(0.2)의 균형: 안정성 + 높은 성능
-    #     'ent_coef': 0.0005,  # 매우 작은 entropy bonus: 초반 exploration만 도움
-    #     'reward_window_size': 22,  # Gray(30)와 현재(20)의 중간: 빠른 적응 + 안정성
-    #     'lambda_1': 0.65,  # Gray(0.7)와 현재(0.5)의 중간: 강한 exploration으로 높은 최종 성능
-    #     'lambda_2': 0.2,  # Gray와 동일: Expansion 여유 확보
-    # },
     'HalfCheetah': {
         'total_timesteps': 3000000,
         'num_envs': 1,
         'num_steps': 2048,
-        # Fix: Initial return too low & too slow learning
-        # Strategy based on successful Hopper config: Strong early exploration + fast adaptation
-        'epsilon_0': 0.22,  # Slightly higher than default for stability (Hopper: 0.23)
-        'ent_coef': 0.0005,  # Very small entropy: helps early exploration only (like Hopper)
-        'lambda_1': 0.7,  # Strong expansion: aggressive early exploration for higher initial return
-        'lambda_2': 0.2,  # Low contraction: allows continued exploration and learning
-        'reward_window_size': 20,  # Smaller window: faster adaptation to reward changes (Hopper: 22)
-        'update_epochs': 4,  # Standard epochs
-        'vf_coef': 0.5,  # Standard value function coefficient
-        'max_grad_norm': 0.5,  # Standard gradient clipping
+        'epsilon_0': 0.22,              # Slightly higher than default for stability (Hopper: 0.23)
+        'ent_coef': 0.0005,             # Very small entropy: helps early exploration only (like Hopper)
+        'lambda_1': 0.7,                # Strong expansion: aggressive early exploration for higher initial return
+        'lambda_2': 0.2,                # Low contraction: allows continued exploration and learning
+        'reward_window_size': 20,       # Smaller window: faster adaptation to reward changes (Hopper: 22)
+        'update_epochs': 4,             # Standard epochs
+        'vf_coef': 0.5,                 # Standard value function coefficient
+        'max_grad_norm': 0.5,           # Standard gradient clipping
     },
     'Walker2d': {
         'total_timesteps': 3000000,
         'num_envs': 1,
         'num_steps': 2048,
         'ent_coef': 0.0,
-        # PPO-BR paper principles: dual-signal adaptation
-        # (1) Entropy-driven expansion: promotes exploration in high-uncertainty states
-        # (2) Reward-guided contraction: enforces stability during convergence
-        'learning_rate': 3e-4,  # Standard learning rate
-        'epsilon_0': 0.2,  # Base clipping threshold (paper default)
-        'lambda_1': 0.65,  # Enhanced entropy expansion for faster early exploration
-        'lambda_2': 0.28,  # Strong reward contraction for stable convergence (paper emphasizes this)
-        'reward_window_size': 25,  # Optimal window for tracking reward progression (ΔR_t)
-        'update_epochs': 4,  # Standard epochs
+        'epsilon_0': 0.2,               # Base clipping threshold (paper default)
+        'lambda_1': 0.65,               # Enhanced entropy expansion for faster early exploration
+        'lambda_2': 0.28,               # Strong reward contraction for stable convergence (paper emphasizes this)
+        'reward_window_size': 25,       # Optimal window for tracking reward progression (ΔR_t)
+        'update_epochs': 4,             # Standard epochs
     },
     'Humanoid': {
         'total_timesteps': 10000000,
         'num_envs': 1,
         'num_steps': 2048,
         'ent_coef': 0.0,
-        'reward_window_size': 40,  # 매우 느린 수렴, 매우 높은 변동성 → 매우 큰 k
+        'reward_window_size': 40,       # Extremely slow convergence, Very high volatility → Large k
         'lambda_1': 0.6,
         'lambda_2': 0.3,
     },
@@ -185,7 +169,6 @@ def run_experiment(env_id, algorithm='ppo_br', **kwargs):
         trainer = PPO_BR(**ppo_br_config)
     elif algorithm.lower() == 'simple_ppo_br':
         simple_ppo_br_config = config.copy()
-        # Handle backward compatibility: convert old names to new paper notation
         if 'clip_coef' in simple_ppo_br_config:
             if 'epsilon_0' not in simple_ppo_br_config and 'base_clip_coef' not in simple_ppo_br_config:
                 simple_ppo_br_config['epsilon_0'] = simple_ppo_br_config.pop('clip_coef')
@@ -197,9 +180,7 @@ def run_experiment(env_id, algorithm='ppo_br', **kwargs):
             simple_ppo_br_config['lambda_1'] = simple_ppo_br_config.pop('lambda1')
         if 'lambda2' in simple_ppo_br_config and 'lambda_2' not in simple_ppo_br_config:
             simple_ppo_br_config['lambda_2'] = simple_ppo_br_config.pop('lambda2')
-        # Remove PPO_BR specific params that Simple_PPO_BR doesn't use
         simple_ppo_br_config.pop('value_clip_coef', None)
-        # Keep convergence_threshold_ratio (Simple_PPO_BR now supports it)
         trainer = Simple_PPO_BR(**simple_ppo_br_config)
     
     agent = trainer.train()
