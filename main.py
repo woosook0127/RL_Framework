@@ -95,9 +95,13 @@ ENV_CONFIGS = {
         'total_timesteps': 3000000,
         'num_envs': 1,
         'num_steps': 2048,
-        'ent_coef': 0.0,
-        # Critical fix: Initial return too low → early convergence to poor performance
-        # Strategy: (1) Better early exploration, (2) Prevent premature convergence, (3) Enable long-term learning
+        # Fix: Initial return too low & too slow learning
+        # Strategy based on successful Hopper config: Strong early exploration + fast adaptation
+        'epsilon_0': 0.22,  # Slightly higher than default for stability (Hopper: 0.23)
+        'ent_coef': 0.0005,  # Very small entropy: helps early exploration only (like Hopper)
+        'lambda_1': 0.7,  # Strong expansion: aggressive early exploration for higher initial return
+        'lambda_2': 0.2,  # Low contraction: allows continued exploration and learning
+        'reward_window_size': 20,  # Smaller window: faster adaptation to reward changes (Hopper: 22)
         'update_epochs': 4,  # Standard epochs
         'vf_coef': 0.5,  # Standard value function coefficient
         'max_grad_norm': 0.5,  # Standard gradient clipping
@@ -123,6 +127,8 @@ ENV_CONFIGS = {
         'num_steps': 2048,
         'ent_coef': 0.0,
         'reward_window_size': 40,  # 매우 느린 수렴, 매우 높은 변동성 → 매우 큰 k
+        'lambda_1': 0.6,
+        'lambda_2': 0.3,
     },
 }
 
