@@ -73,7 +73,7 @@ psi_Delta_R_t = 1.0 - np.tanh(abs_Delta_R_t)
 - 수렴 시(보상이 안정화) → ψ 높음 → ε_t 감소 ✓
 - 탐색 시(보상 변화 큼) → ψ 낮음 → ε_t 증가/유지 ✓
 
-**개선 제안:**
+**개선:**
 논문에서 φ, ψ가 단순히 [0,1]로 매핑한다고 했으므로:
 ```python
 # 더 간단한 방식: ΔR_t의 절댓값을 정규화
@@ -133,9 +133,9 @@ epsilon_t = np.clip(epsilon_t, self.eps_min, self.eps_max)
   2. Reward progression 계산
   3. Normalization 함수 구현
   4. Adaptive threshold 적용
-  등이 필요하므로 실제로는 더 많은 코드가 필요함
+  등이 필요하므로 실제로는 훨씬 더 많은 코드가 필요함
 
-## 개선 제안
+## 개선
 
 ### 1. 더 간단한 ΔR_t 계산
 ```python
